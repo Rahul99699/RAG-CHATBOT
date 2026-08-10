@@ -1,0 +1,6 @@
+pymupdf
+langchain-text-splitters
+sentence-transformers
+chromadb
+gradio
+groq
