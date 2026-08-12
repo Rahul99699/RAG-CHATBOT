@@ -20,9 +20,7 @@ model = SentenceTransformer(
 # Connect to ChromaDB ONCE
 # ==========================================
 
-client = chromadb.PersistentClient(
-    path="./chroma_db"
-)
+client = chromadb.CloudClient()
 
 collection = client.get_or_create_collection(
     name="pdf_document"
