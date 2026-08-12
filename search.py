@@ -32,9 +32,7 @@ groq_client = Groq(
 # 3. Connect to ChromaDB
 # ==========================================
 
-chroma_client = chromadb.PersistentClient(
-    path="./chroma_db"
-)
+chroma_client = chromadb.CloudClient()
 
 collection = chroma_client.get_collection(
     name="pdf_document"
