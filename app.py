@@ -1,7 +1,7 @@
 import gradio as gr
 from search import  answer
 from Text_extractor import process_pdf
-
+import os
 
 with gr.Blocks() as demo:
 
@@ -40,4 +40,7 @@ with gr.Blocks() as demo:
     )
 
 
-demo.launch()
+demo.launch(
+    server_name="0.0.0.0",
+    server_port=int(os.environ.get("PORT", 7860))
+)
