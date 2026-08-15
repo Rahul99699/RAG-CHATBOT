@@ -2,45 +2,76 @@ import os
 
 import chromadb
 from sentence_transformers import SentenceTransformer
-
-from dotenv import load_dotenv
 from groq import Groq
 
 
 # ==========================================
-# 1. Load environment variables
+# Environment variables
 # ==========================================
 
-load_dotenv()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-GROQ_KEY = os.getenv("GROQ_KEY")
-
-if not GROQ_KEY:
-    raise ValueError("GROQ_KEY not found in .env")
+CHROMA_API_KEY = os.getenv("CHROMA_API_KEY")
+CHROMA_TENANT = os.getenv("CHROMA_TENANT")
+CHROMA_DATABASE = os.getenv("CHROMA_DATABASE")
 
 
 # ==========================================
-# 2. Connect to Groq
+# Validate environment variables
+# ==========================================
+
+if not GROQ_API_KEY:
+    raise ValueError(
+        "GROQ_API_KEY environment variable is not set."
+    )
+
+if not CHROMA_API_KEY:
+    raise ValueError(
+        "CHROMA_API_KEY environment variable is not set."
+    )
+
+if not CHROMA_TENANT:
+    raise ValueError(
+        "CHROMA_TENANT environment variable is not set."
+    )
+
+if not CHROMA_DATABASE:
+    raise ValueError(
+        "CHROMA_DATABASE environment variable is not set."
+    )
+
+
+# ==========================================
+# Groq client
 # ==========================================
 
 groq_client = Groq(
-    api_key=GROQ_KEY
+    api_key=GROQ_API_KEY
 )
 
 
 # ==========================================
-# 3. Connect to ChromaDB
+# Chroma Cloud client
 # ==========================================
 
-chroma_client = chromadb.CloudClient()
+chroma_client = chromadb.CloudClient(
+    api_key=CHROMA_API_KEY,
+    tenant=CHROMA_TENANT,
+    database=CHROMA_DATABASE
+)
 
-collection = chroma_client.get_collection(
+
+# ==========================================
+# Chroma collection
+# ==========================================
+
+collection = chroma_client.get_or_create_collection(
     name="pdf_document"
 )
 
 
 # ==========================================
-# 4. Load embedding model ONCE
+# Embedding model
 # ==========================================
 
 model = SentenceTransformer(
@@ -49,15 +80,26 @@ model = SentenceTransformer(
 
 
 # ==========================================
-# 5. Answer function
+# Answer function
 # ==========================================
 
 def answer(question):
 
-    # 1. Convert question → embedding
+    if not question or not question.strip():
+        return "Please enter a question."
+
+    question = question.strip()
+
+    # --------------------------------------
+    # Convert question to embedding
+    # --------------------------------------
+
     question_embedding = model.encode(question)
 
-    # 2. Search ChromaDB
+    # --------------------------------------
+    # Search Chroma Cloud
+    # --------------------------------------
+
     results = collection.query(
         query_embeddings=[
             question_embedding.tolist()
@@ -65,15 +107,31 @@ def answer(question):
         n_results=3
     )
 
-    # 3. Get retrieved chunks
-    chunks = results["documents"][0]
+    # --------------------------------------
+    # Check whether anything was found
+    # --------------------------------------
 
-    # 4. Combine chunks
+    documents = results.get("documents", [])
+
+    if not documents or not documents[0]:
+        return "I don't know based on the provided document."
+
+    # --------------------------------------
+    # Get retrieved chunks
+    # --------------------------------------
+
+    chunks = documents[0]
+
     context = "\n\n".join(chunks)
 
-    # 5. Create prompt
+    # --------------------------------------
+    # Create RAG prompt
+    # --------------------------------------
+
     prompt = f"""
-Answer the question using only the context below.
+You are a helpful PDF question-answering assistant.
+
+Answer the user's question using ONLY the context provided below.
 
 Context:
 {context}
@@ -81,11 +139,17 @@ Context:
 Question:
 {question}
 
-If the answer is not present in the context,
-say "I don't know based on the provided document."
+Rules:
+- Use only information from the context.
+- Do not make up information.
+- If the answer is not present in the context, say:
+"I don't know based on the provided document."
 """
 
-    # 6. Send context + question to LLM
+    # --------------------------------------
+    # Groq request
+    # --------------------------------------
+
     response = groq_client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[
@@ -93,8 +157,12 @@ say "I don't know based on the provided document."
                 "role": "user",
                 "content": prompt
             }
-        ]
+        ],
+        temperature=0.2
     )
 
-    # 7. Return answer to Gradio
+    # --------------------------------------
+    # Return answer
+    # --------------------------------------
+
     return response.choices[0].message.content
