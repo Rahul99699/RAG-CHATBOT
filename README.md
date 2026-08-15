@@ -1,4 +1,4 @@
-# DocuRAG — Intelligent PDF Question Answering System
+# DocuRAG — Intelligent PDF Question Answering System | [LINK](https://rag-chatbot-production-4782.up.railway.app/)
 
 A Retrieval-Augmented Generation (RAG) application that allows users to upload PDF documents and ask questions using natural language. The system retrieves relevant document chunks using semantic similarity and uses an LLM to generate context-grounded answers.
 
