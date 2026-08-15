@@ -1,20 +1,31 @@
-import gradio as gr
-from search import  answer
-from Text_extractor import process_pdf
 import os
+import gradio as gr
 
-with gr.Blocks() as demo:
+from search import answer
+from Text_extractor import process_pdf
+
+
+with gr.Blocks(title="RAG Chatbot") as demo:
 
     gr.Markdown("# 📄 RAG Chatbot")
+    gr.Markdown("Upload a PDF and ask questions about its content.")
 
-    # PDF upload
+    # ==============================
+    # PDF Upload
+    # ==============================
+
     pdf = gr.File(
         label="Upload PDF",
-        file_types=[".pdf"]
+        file_types=[".pdf"],
+        type="filepath"
     )
 
     upload_button = gr.Button("Process PDF")
-    status = gr.Textbox(label="Status")
+
+    status = gr.Textbox(
+        label="Status",
+        interactive=False
+    )
 
     upload_button.click(
         fn=process_pdf,
@@ -22,15 +33,20 @@ with gr.Blocks() as demo:
         outputs=status
     )
 
+    # ==============================
     # Question
+    # ==============================
+
     question = gr.Textbox(
-        label="Ask a question"
+        label="Ask a question",
+        placeholder="Ask something about your PDF..."
     )
 
     ask_button = gr.Button("Ask")
 
     response = gr.Textbox(
-        label="Answer"
+        label="Answer",
+        interactive=False
     )
 
     ask_button.click(
@@ -39,6 +55,10 @@ with gr.Blocks() as demo:
         outputs=response
     )
 
+
+# ==============================
+# Render configuration
+# ==============================
 
 demo.launch(
     server_name="0.0.0.0",
