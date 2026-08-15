@@ -1,3 +1,4 @@
+import os
 import uuid
 
 import pymupdf
@@ -8,7 +9,32 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 # ==========================================
-# Load embedding model ONCE
+# Environment variables
+# ==========================================
+
+CHROMA_API_KEY = os.getenv("CHROMA_API_KEY")
+CHROMA_TENANT = os.getenv("CHROMA_TENANT")
+CHROMA_DATABASE = os.getenv("CHROMA_DATABASE")
+
+
+if not CHROMA_API_KEY:
+    raise ValueError(
+        "CHROMA_API_KEY environment variable is not set."
+    )
+
+if not CHROMA_TENANT:
+    raise ValueError(
+        "CHROMA_TENANT environment variable is not set."
+    )
+
+if not CHROMA_DATABASE:
+    raise ValueError(
+        "CHROMA_DATABASE environment variable is not set."
+    )
+
+
+# ==========================================
+# Embedding model
 # ==========================================
 
 model = SentenceTransformer(
@@ -17,10 +43,15 @@ model = SentenceTransformer(
 
 
 # ==========================================
-# Connect to ChromaDB ONCE
+# Chroma Cloud
 # ==========================================
 
-client = chromadb.CloudClient()
+client = chromadb.CloudClient(
+    api_key=CHROMA_API_KEY,
+    tenant=CHROMA_TENANT,
+    database=CHROMA_DATABASE
+)
+
 
 collection = client.get_or_create_collection(
     name="pdf_document"
@@ -33,38 +64,88 @@ collection = client.get_or_create_collection(
 
 def process_pdf(pdf_path):
 
-    # 1. Open PDF
-    with pymupdf.open(pdf_path) as data:
+    if not pdf_path:
+        return "Please upload a PDF first."
 
-        # 2. Extract text
-        text = ""
+    try:
 
-        for page in data:
-            text += page.get_text()
+        # ----------------------------------
+        # Extract PDF text
+        # ----------------------------------
 
-    # 3. Split text into chunks
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=550,
-        chunk_overlap=10,
-        length_function=len
-    )
+        with pymupdf.open(pdf_path) as data:
 
-    data_split = splitter.split_text(text)
+            text = ""
 
-    # 4. Create embeddings
-    embeddings = model.encode(data_split)
+            for page in data:
+                text += page.get_text() + "\n"
 
-    # 5. Create unique IDs
-    ids = [
-        f"{uuid.uuid4()}_{i}"
-        for i in range(len(data_split))
-    ]
+        if not text.strip():
+            return "Could not extract any text from this PDF."
 
-    # 6. Store in ChromaDB
-    collection.add(
-        documents=data_split,
-        embeddings=embeddings.tolist(),
-        ids=ids
-    )
+        # ----------------------------------
+        # Split text into chunks
+        # ----------------------------------
 
-    return f"PDF processed successfully. {len(data_split)} chunks stored."
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=550,
+            chunk_overlap=50,
+            length_function=len
+        )
+
+        data_split = splitter.split_text(text)
+
+        if not data_split:
+            return "No text chunks were created."
+
+        # ----------------------------------
+        # Create embeddings
+        # ----------------------------------
+
+        embeddings = model.encode(
+            data_split,
+            show_progress_bar=False
+        )
+
+        # ----------------------------------
+        # Unique document ID
+        # ----------------------------------
+
+        document_id = str(uuid.uuid4())
+
+        ids = [
+            f"{document_id}_{i}"
+            for i in range(len(data_split))
+        ]
+
+        # ----------------------------------
+        # Metadata
+        # ----------------------------------
+
+        metadatas = [
+            {
+                "document_id": document_id,
+                "source": os.path.basename(pdf_path)
+            }
+            for _ in data_split
+        ]
+
+        # ----------------------------------
+        # Store in Chroma Cloud
+        # ----------------------------------
+
+        collection.add(
+            documents=data_split,
+            embeddings=embeddings.tolist(),
+            ids=ids,
+            metadatas=metadatas
+        )
+
+        return (
+            f"PDF processed successfully.\n"
+            f"{len(data_split)} chunks stored in Chroma Cloud."
+        )
+
+    except Exception as e:
+
+        return f"Error processing PDF: {str(e)}"
