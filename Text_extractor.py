@@ -1,6 +1,5 @@
 import os
 import uuid
-
 import pymupdf
 import chromadb
 
@@ -9,28 +8,18 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 # ==========================================
-# Environment variables
+# Chroma Cloud
 # ==========================================
 
-CHROMA_API_KEY = os.getenv("CHROMA_API_KEY")
-CHROMA_TENANT = os.getenv("CHROMA_TENANT")
-CHROMA_DATABASE = os.getenv("CHROMA_DATABASE")
+client = chromadb.CloudClient(
+    api_key=os.getenv("CHROMA_API_KEY"),
+    tenant=os.getenv("CHROMA_TENANT"),
+    database=os.getenv("CHROMA_DATABASE")
+)
 
-
-if not CHROMA_API_KEY:
-    raise ValueError(
-        "CHROMA_API_KEY environment variable is not set."
-    )
-
-if not CHROMA_TENANT:
-    raise ValueError(
-        "CHROMA_TENANT environment variable is not set."
-    )
-
-if not CHROMA_DATABASE:
-    raise ValueError(
-        "CHROMA_DATABASE environment variable is not set."
-    )
+collection = client.get_or_create_collection(
+    name="pdf_document"
+)
 
 
 # ==========================================
@@ -43,53 +32,38 @@ model = SentenceTransformer(
 
 
 # ==========================================
-# Chroma Cloud
-# ==========================================
-
-client = chromadb.CloudClient(
-    api_key=CHROMA_API_KEY,
-    tenant=CHROMA_TENANT,
-    database=CHROMA_DATABASE
-)
-
-
-collection = client.get_or_create_collection(
-    name="pdf_document"
-)
-
-
-# ==========================================
 # Process PDF
 # ==========================================
 
 def process_pdf(pdf_path):
 
-    if not pdf_path:
+    if pdf_path is None:
         return "Please upload a PDF first."
 
     try:
 
-        # ----------------------------------
-        # Extract PDF text
-        # ----------------------------------
+        # ==========================================
+        # 1. Extract text
+        # ==========================================
 
         with pymupdf.open(pdf_path) as data:
 
             text = ""
 
             for page in data:
-                text += page.get_text() + "\n"
+                text += page.get_text()
 
         if not text.strip():
-            return "Could not extract any text from this PDF."
+            return "Could not extract any text from the PDF."
 
-        # ----------------------------------
-        # Split text into chunks
-        # ----------------------------------
+
+        # ==========================================
+        # 2. Split text
+        # ==========================================
 
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=550,
-            chunk_overlap=50,
+            chunk_overlap=10,
             length_function=len
         )
 
@@ -98,53 +72,55 @@ def process_pdf(pdf_path):
         if not data_split:
             return "No text chunks were created."
 
-        # ----------------------------------
-        # Create embeddings
-        # ----------------------------------
 
-        embeddings = model.encode(
-            data_split,
-            show_progress_bar=False
-        )
+        # ==========================================
+        # 3. Create embeddings
+        # ==========================================
 
-        # ----------------------------------
-        # Unique document ID
-        # ----------------------------------
+        embeddings = model.encode(data_split)
 
-        document_id = str(uuid.uuid4())
+
+        # ==========================================
+        # 4. DELETE PREVIOUS PDF
+        # ==========================================
+
+        old_data = collection.get()
+
+        old_ids = old_data.get("ids", [])
+
+        if old_ids:
+            collection.delete(
+                ids=old_ids
+            )
+
+
+        # ==========================================
+        # 5. Create IDs for new PDF
+        # ==========================================
 
         ids = [
-            f"{document_id}_{i}"
+            f"{uuid.uuid4()}_{i}"
             for i in range(len(data_split))
         ]
 
-        # ----------------------------------
-        # Metadata
-        # ----------------------------------
 
-        metadatas = [
-            {
-                "document_id": document_id,
-                "source": os.path.basename(pdf_path)
-            }
-            for _ in data_split
-        ]
-
-        # ----------------------------------
-        # Store in Chroma Cloud
-        # ----------------------------------
+        # ==========================================
+        # 6. Store NEW PDF
+        # ==========================================
 
         collection.add(
             documents=data_split,
             embeddings=embeddings.tolist(),
-            ids=ids,
-            metadatas=metadatas
+            ids=ids
         )
 
+
         return (
-            f"PDF processed successfully.\n"
-            f"{len(data_split)} chunks stored in Chroma Cloud."
+            f"Previous document deleted.\n"
+            f"New PDF processed successfully.\n"
+            f"{len(data_split)} chunks stored."
         )
+
 
     except Exception as e:
 
