@@ -1,14 +1,23 @@
 import os
+
+print("=== APP STARTED ===")
+print("PORT =", os.environ.get("PORT"))
+
 import gradio as gr
 
 from search import answer
 from Text_extractor import process_pdf
 
+print("=== IMPORTS COMPLETED ===")
+
 
 with gr.Blocks(title="RAG Chatbot") as demo:
 
     gr.Markdown("# 📄 RAG Chatbot")
-    gr.Markdown("Upload a PDF and ask questions about its content.")
+
+    gr.Markdown(
+        "Upload a PDF, process it, and then ask questions about its content."
+    )
 
     # ==============================
     # PDF Upload
@@ -56,11 +65,17 @@ with gr.Blocks(title="RAG Chatbot") as demo:
     )
 
 
-# ==============================
-# Render configuration
-# ==============================
+print("=== GRADIO UI CREATED ===")
 
-demo.launch(
-    server_name="0.0.0.0",
-    server_port=int(os.environ.get("PORT", 7860))
-)
+
+if __name__ == "__main__":
+
+    port = int(os.environ.get("PORT", 7860))
+
+    print("=== STARTING GRADIO ===")
+    print(f"Server will run on 0.0.0.0:{port}")
+
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=port
+    )
